@@ -1,28 +1,21 @@
-import type { Session } from "../../../shared/types";
-import { assertBattle } from "../../../shared/document";
-export function saveArchive(s: Session) {
-  localStorage.setItem("we001-session", JSON.stringify(s));
-}
-export function loadArchive(): Session | null {
-  try {
-    const raw = localStorage.getItem("we001-session");
-    if (!raw) return null;
-    const s = JSON.parse(raw) as Session;
-    assertBattle(s.live);
-    assertBattle(s.initial);
-    if (!Array.isArray(s.events)) return null;
-    return s;
-  } catch {
-    return null;
-  }
-}
-export function downloadArchive(s: Session) {
+import type { HistoryStore } from "../model/history";
+
+function triggerDownload(filename: string, json: string) {
   const url = URL.createObjectURL(
-    new Blob([JSON.stringify(s, null, 2)], { type: "application/json" }),
+    new Blob([json], { type: "application/json" }),
   );
   const a = document.createElement("a");
   a.href = url;
-  a.download = "灰烬渡口-战斗记录.json";
+  a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * 导出自包含分块档案：清单 + 全部检查点块（按需读取）+ 开放尾块。
+ * 步骤编号沿用录制时的原始编号，下载记录与历史引用可直接对照。
+ */
+export async function downloadArchive(store: HistoryStore): Promise<void> {
+  const { filename, json } = await store.exportArchive();
+  triggerDownload(filename, json);
 }

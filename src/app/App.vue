@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { BattleMap, TerrainPanel } from "../features/terrain";
 import { RosterPanel } from "../features/roster";
 import { ActionPanel } from "../features/tactics";
@@ -6,8 +7,10 @@ import { TurnOrder } from "../features/initiative";
 import { ReplayPanel, downloadArchive } from "../features/replay";
 import { key } from "../shared/document";
 import { useWorkspace } from "./workspace";
+
 const {
   session,
+  history,
   cursor,
   selected,
   skill,
@@ -20,12 +23,29 @@ const {
   targets,
   path,
   playback,
+  locating,
+  locateTarget,
+  saveState,
   cell,
   wait,
   seek,
   reset,
+  bootstrap,
 } = useWorkspace();
+
+onMounted(() => {
+  void bootstrap();
+});
+
+async function onDownload() {
+  try {
+    await downloadArchive(history);
+  } catch (e) {
+    notice.value = (e as Error).message;
+  }
+}
 </script>
+
 <template>
   <main>
     <header>
@@ -49,15 +69,30 @@ const {
         }}<small>消灭敌方所有角色获胜</small>
       </div>
     </div>
-    <TurnOrder :battle="battle" />
+
+    <div class="turn-host" :class="{ waiting: locating }">
+      <TurnOrder :battle="battle" />
+      <div v-if="locating" class="locate-overlay">
+        <span class="spinner light" />
+        定位等待 · 步骤 {{ locateTarget }} 的检查点与增量重建完成后，
+        行动队列才会整体切换
+      </div>
+    </div>
+
     <div class="workspace">
       <aside>
-        <RosterPanel
-          :units="battle.units"
-          :selected="selected"
-          :active="battle.active"
-          @select="selected = $event"
-        /><TerrainPanel
+        <div class="panel-host" :class="{ waiting: locating }">
+          <RosterPanel
+            :units="battle.units"
+            :selected="selected"
+            :active="battle.active"
+            @select="selected = $event"
+          />
+          <div v-if="locating" class="locate-overlay compact">
+            <span class="spinner light" />编队定位中…
+          </div>
+        </div>
+        <TerrainPanel
           :brush="brush"
           :locked="locked"
           @paint="
@@ -67,14 +102,26 @@ const {
         />
       </aside>
       <div class="center">
-        <BattleMap
-          :battle="battle"
-          :selected="selected"
-          :routes="[...routes.keys()]"
-          :targets="targets.map(key)"
-          :path="path"
-          @cell="cell"
-        />
+        <div class="map-host" :class="{ waiting: locating }">
+          <BattleMap
+            :battle="battle"
+            :selected="selected"
+            :routes="[...routes.keys()]"
+            :targets="targets.map(key)"
+            :path="path"
+            @cell="cell"
+          />
+          <div v-if="locating" class="locate-overlay map-overlay">
+            <span class="spinner light" />
+            <div>
+              <b>正在定位步骤 {{ locateTarget }}</b>
+              <p>
+                地图画面保持上一帧，直到对应检查点加载、动作增量全部重放成功后
+                整体切换；快速拖动会自动取消更早的定位请求。
+              </p>
+            </div>
+          </div>
+        </div>
         <div class="field-note">
           <span>✦ 战场提示</span>
           <p>
@@ -94,20 +141,29 @@ const {
             brush = null;
           "
           @wait="wait"
-        /><ReplayPanel
+        />
+        <ReplayPanel
           :events="session.events"
           :cursor="cursor"
           :playing="playback.playing.value"
+          :locating="locating"
+          :locate-target="locateTarget"
+          :segments="history.segments.value"
+          :corrupted="history.corruptedRanges.value"
+          :step-state="history.stepState"
+          :save-state="saveState"
           @seek="seek"
-          @play="playback.play(cursor)"
+          @play="playback.play()"
           @stop="playback.stop"
-          @download="downloadArchive(session)"
+          @download="onDownload"
+          @live="history.backToLive()"
         />
       </aside>
     </div>
     <footer>
       <span>WE–001 / TURN-BASED TACTICS</span
-      ><span>自动保存于当前浏览器　·　全部运算在本地完成</span
+      ><span
+        >检查点 + 动作增量分块存储　·　异步按需读取　·　全部运算在本地完成</span
       ><span>苍蓝军 <b>VS</b> 余烬军</span>
     </footer>
   </main>

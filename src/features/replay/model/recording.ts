@@ -1,26 +1,43 @@
-import type { Battle, EventKind, Point, Session } from "../../../shared/types";
+import type {
+  ActionDelta,
+  Battle,
+  EventKind,
+  EventMeta,
+  Point,
+} from "../../../shared/types";
 import { clone } from "../../../shared/document";
-export function record(
-  s: Session,
+import { diffBattle } from "../lib/delta";
+
+/**
+ * 录制一个动作增量。
+ * id 由历史库按原始逻辑步骤递增分配，分块、迁移、回放全流程保持不变，
+ * 不做压缩后重新编号，保证下载记录与历史引用始终可对照。
+ */
+export function buildDelta(
+  id: number,
   before: Battle,
+  after: Battle,
   kind: EventKind,
+  actor: string,
   label: string,
   path: Point[] = [],
-) {
-  s.events.push({
-    id: s.events.length + 1,
+): ActionDelta {
+  return {
+    id,
     kind,
-    actor: before.active,
+    actor,
     label,
     path: clone(path),
-    before: clone(before),
-    after: clone(s.live),
-  });
+    delta: diffBattle(before, after),
+  };
 }
-export function frame(s: Session, cursor: number) {
-  return cursor < 0
-    ? s.live
-    : cursor === 0
-      ? s.initial
-      : s.events[Math.min(cursor, s.events.length) - 1].after;
+
+export function toMeta(d: ActionDelta): EventMeta {
+  return {
+    id: d.id,
+    kind: d.kind,
+    actor: d.actor,
+    label: d.label,
+    path: clone(d.path),
+  };
 }

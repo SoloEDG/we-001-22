@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test:build": "node tests/build-tests.mjs",
+    "test": "node tests/build-tests.mjs && node tests/.build/archive.test.mjs && node tests/.build/playback.test.mjs"
   },
   "dependencies": {
     "vue": "^3.5.0"

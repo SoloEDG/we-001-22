@@ -486,6 +486,228 @@ aside {
   padding: 7px 5px;
   flex: 1;
 }
+
+/* ---------------- 分块档案状态 ---------------- */
+.save-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9px;
+  color: #7f9687;
+  letter-spacing: 0.5px;
+  margin: -4px 0 2px;
+}
+.save-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8fb08a;
+}
+.save-state[data-state="saving"] i {
+  background: #d9bc76;
+  animation: pulse 0.9s ease-in-out infinite;
+}
+.save-state[data-state="error"] {
+  color: #d99a78;
+}
+.save-state[data-state="error"] i {
+  background: #d07a55;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #5a6b5c;
+  border-top-color: #d9bc76;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.spinner.light {
+  border-color: #22302a;
+  border-top-color: #e4d6a8;
+}
+
+.segment-bar {
+  display: flex;
+  gap: 3px;
+  height: 7px;
+  margin: -6px 0 12px;
+}
+.segment {
+  border-radius: 2px;
+  min-width: 4px;
+}
+.segment.unloaded {
+  background: #4a5a4c;
+}
+.segment.loaded {
+  background: #6f9a78;
+}
+.segment.pending {
+  background: #8d7c4e;
+}
+.segment.corrupt {
+  background: #b06a4c;
+}
+
+.locating-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #2c3528;
+  border: 1px solid #8a7c4d;
+  color: #d9cfa6;
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+}
+
+.corrupt-banner {
+  background: #3a2a23;
+  border: 1px solid #8d5a44;
+  color: #ddb39c;
+  font-size: 10px;
+  line-height: 1.7;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+}
+.corrupt-banner b {
+  color: #e6a07e;
+}
+
+.event-list {
+  max-height: 178px;
+  overflow: auto;
+}
+.event-list button {
+  display: flex;
+  width: 100%;
+  font-size: 10px;
+  padding: 9px 5px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+  gap: 8px;
+  align-items: center;
+}
+.event-list small {
+  color: #789381;
+}
+.event-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.event-side i {
+  color: #bcab72;
+  font-style: normal;
+}
+.state-tag,
+.event-side em {
+  font-style: normal;
+  font-size: 8px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #33453a;
+  color: #93ab98;
+}
+.event-row.unloaded .event-label {
+  color: #93a297;
+}
+.event-row.unloaded em {
+  background: #2c3a36;
+  color: #7d948a;
+}
+.event-row.corrupt em.bad {
+  background: #5a3528;
+  color: #e8a684;
+}
+.event-row.pending em.pending {
+  background: #4a4230;
+  color: #d2c087;
+}
+.event-row.corrupt .event-label {
+  color: #d39b82;
+}
+.event-row.loaded .event-side em {
+  background: #33483a;
+  color: #a7c6a9;
+}
+
+/* ---------------- 定位等待遮罩（地图/编队/队列整体切换） ---------------- */
+.map-host,
+.panel-host,
+.turn-host {
+  position: relative;
+}
+.map-host.waiting::after,
+.panel-host.waiting::after,
+.turn-host.waiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #101817b8;
+  backdrop-filter: blur(1.5px);
+  z-index: 4;
+}
+.locate-overlay {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #1d2922;
+  border: 1px solid #b3a467;
+  color: #e4d6a8;
+  padding: 14px 18px;
+  font-size: 11px;
+  line-height: 1.7;
+  box-shadow: 0 10px 30px #0c1210cc;
+}
+.turn-host .locate-overlay {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+.locate-overlay.compact {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 14px;
+}
+.locate-overlay.map-overlay {
+  top: 18px;
+  left: 18px;
+  right: 18px;
+}
+.locate-overlay.map-overlay p {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: #a8b8a6;
+}
 input[type="range"] {
   width: 100%;
   accent-color: #c7b679;

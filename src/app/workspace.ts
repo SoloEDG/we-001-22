@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { computed, ref } from "vue";
 import type { Point, Terrain } from "../shared/types";
 import { clone, findUnit, key } from "../shared/document";
 import { reachable, terrainRules, paintTile } from "../features/terrain";
@@ -10,62 +10,61 @@ import {
   castSkill,
 } from "../features/tactics";
 import { finishTurn } from "../features/initiative";
-import {
-  record,
-  frame,
-  loadArchive,
-  saveArchive,
-  usePlayback,
-} from "../features/replay";
-import { newSession } from "./session";
+import { useHistoryStore } from "../features/replay";
+
 export function useWorkspace() {
-  const session = reactive(loadArchive() ?? newSession());
-  const cursor = ref(-1),
-    selected = ref(session.live.active),
+  const history = useHistoryStore();
+  const { manifest } = history;
+
+  const selected = ref(""),
     skill = ref(""),
-    brush = ref<Terrain | null>(null),
-    notice = ref("选择蓝色格移动，或选择技能指定目标。");
-  const playback = usePlayback(
-    () => session.events.length,
-    (n) => {
-      cursor.value = n;
-    },
-  );
-  const battle = computed(() => frame(session, cursor.value));
+    brush = ref<Terrain | null>(null);
+  const notice = ref("档案启动中…");
+  const cursor = history.cursor;
+  const live = history.live;
+
+  const battle = computed(() => history.displayed.value);
   const actor = computed(() => findUnit(battle.value, battle.value.active));
-  const locked = computed(() => cursor.value >= 0 || !!session.live.ended);
+  const locked = history.locked;
+
   const routes = computed(() =>
     locked.value || actor.value.moved || actor.value.acted
       ? new Map()
-      : reachable(session.live, actor.value, moveBudget(actor.value)),
+      : reachable(live.value, actor.value, moveBudget(actor.value)),
   );
   const targets = computed(() => {
     const s = getSkill(actor.value.job, skill.value);
     return s ? legalTargets(battle.value, actor.value, s) : [];
   });
-  function cell(p: Point) {
+  const path = computed(() => history.currentPath.value);
+
+  function fail(message: string) {
+    notice.value = message;
+  }
+
+  async function cell(p: Point) {
     try {
       if (locked.value) throw new Error("回放只读，请返回实战");
-      const before = clone(session.live),
-        u = actor.value;
+      const before = clone(live.value);
+      const u = actor.value;
       if (brush.value) {
-        paintTile(session.live, p, brush.value);
-        record(
-          session,
+        paintTile(live.value, p, brush.value);
+        history.record(
           before,
           "terrain",
           `地形调整为${terrainRules[brush.value].name}`,
         );
       } else if (skill.value) {
         const s = getSkill(u.job, skill.value)!;
-        const t = session.live.units.find((t) => t.hp > 0 && key(t) === key(p));
+        const t = live.value.units.find(
+          (t) => t.hp > 0 && key(t) === key(p),
+        );
         if (!t) throw new Error("请点击合法角色");
-        const ground = session.live.tiles.find((v) => key(v) === key(t))!;
+        const ground = live.value.tiles.find((v) => key(v) === key(t))!;
         const high =
-          session.live.tiles.find((v) => key(v) === key(u))!.terrain ===
-          "ridge";
+          live.value.tiles.find((v) => key(v) === key(u))!.terrain === "ridge";
         const value = castSkill(
-          session.live,
+          live.value,
           u.id,
           t.id,
           s,
@@ -73,8 +72,7 @@ export function useWorkspace() {
           terrainRules[ground.terrain].cover,
           high,
         );
-        record(
-          session,
+        history.record(
           before,
           "skill",
           `${u.name} → ${t.name} · ${s.name} ${value}`,
@@ -84,56 +82,81 @@ export function useWorkspace() {
         const route = routes.value.get(key(p));
         if (!route?.path.length)
           throw new Error("此格不可达，请检查地形与占位");
-        moveUnit(session.live, u.id, route.path);
-        record(
-          session,
+        moveUnit(live.value, u.id, route.path);
+        history.record(
           before,
           "move",
           `${u.name}移动 · 消耗${route.cost}`,
           route.path,
         );
       }
-      saveArchive(session);
-      notice.value = session.events.at(-1)!.label;
+      // 先在内存完成动作与增量，再安全落盘；失败保留旧档且不回滚内存，下次重试
+      await history.persist();
+      notice.value = manifest.events.at(-1)?.label ?? "行动已记录";
     } catch (e) {
-      notice.value = (e as Error).message;
+      fail((e as Error).message);
     }
   }
-  function wait() {
+
+  async function wait() {
     if (locked.value) return;
-    const before = clone(session.live);
-    finishTurn(session.live, tickStatuses);
-    record(
-      session,
-      before,
-      "wait",
-      `${findUnit(before, before.active).name}结束行动`,
-    );
-    selected.value = session.live.active;
-    skill.value = "";
-    saveArchive(session);
+    try {
+      const before = clone(live.value);
+      finishTurn(live.value, tickStatuses);
+      history.record(
+        before,
+        "wait",
+        `${findUnit(before, before.active).name}结束行动`,
+      );
+      selected.value = live.value.active;
+      skill.value = "";
+      await history.persist();
+      notice.value = manifest.events.at(-1)?.label ?? "行动已记录";
+    } catch (e) {
+      fail((e as Error).message);
+    }
   }
-  function seek(n: number) {
-    playback.stop();
-    cursor.value = n;
-    skill.value = "";
-    brush.value = null;
-  }
-  function reset() {
-    playback.stop();
-    Object.assign(session, newSession());
-    cursor.value = -1;
-    selected.value = session.live.active;
+
+  async function seek(n: number) {
+    history.stop();
     skill.value = "";
     brush.value = null;
-    saveArchive(session);
-    notice.value = "新战斗已就绪";
+    const ok = await history.locate(n);
+    if (!ok && history.notice.value.text) {
+      // 损坏或被更新的定位取消：保持原画面，透出历史库提示
+      notice.value = history.notice.value.text;
+    }
   }
-  const path = computed(() =>
-    cursor.value > 0 ? (session.events[cursor.value - 1]?.path ?? []) : [],
-  );
+
+  async function reset() {
+    history.stop();
+    try {
+      await history.reset();
+      selected.value = live.value.active;
+      skill.value = "";
+      brush.value = null;
+      notice.value = "新战斗已就绪";
+    } catch (e) {
+      fail((e as Error).message);
+    }
+  }
+
+  async function bootstrap() {
+    await history.bootstrap((text) => {
+      notice.value = text;
+    });
+    selected.value = live.value.active;
+    if (!history.notice.value.text) {
+      notice.value = "选择蓝色格移动，或选择技能指定目标。";
+    } else {
+      notice.value = history.notice.value.text;
+    }
+  }
+
   return {
-    session,
+    // 兼容模板既有结构
+    session: manifest,
+    history,
     cursor,
     selected,
     skill,
@@ -145,10 +168,19 @@ export function useWorkspace() {
     routes,
     targets,
     path,
-    playback,
+    playback: {
+      playing: history.playing,
+      waiting: history.playbackWaiting,
+      play: () => history.play(),
+      stop: history.stop,
+    },
+    locating: history.locating,
+    locateTarget: history.locateTarget,
+    saveState: history.saveState,
     cell,
     wait,
     seek,
     reset,
+    bootstrap,
   };
 }
